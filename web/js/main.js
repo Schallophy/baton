@@ -87,10 +87,13 @@ function paintRail() {
     if (state.stuckOnly && session.status?.state !== "stuck") return false;
     if (!query) return true;
     const label = (session.status?.label ?? "").toLowerCase();
+    // 也按助手名筛选：想「只看 qoder 的」是最常见的用法之一。
+    const agent = shortAgent(session.agent).toLowerCase();
     return (
       session.title.toLowerCase().includes(query) ||
       (session.cwd ?? "").toLowerCase().includes(query) ||
       session.id.toLowerCase().includes(query) ||
+      agent.includes(query) ||
       label.includes(query)
     );
   });
