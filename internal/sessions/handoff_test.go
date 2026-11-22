@@ -113,6 +113,31 @@ func TestBuildHandoffKeepsDialogHeadingWithoutCompaction(t *testing.T) {
 	}
 }
 
+func TestBuildHandoffWritesSummarySectionWhenEmpty(t *testing.T) {
+	// 没有压缩过的会话也必须保留这一段，否则固定结构里少一段，
+	// 接手方无法判断「下面是不是全部历史」。
+	plain := sampleTranscript()
+	plain.Summary = ""
+	plain.SummaryAt = ""
+	plain.BeforeCompaction = 0
+	text, _, _ := BuildHandoff(sampleSession(), plain, HandoffOptions{
+		Summary: true, Messages: true, Todos: false, Limit: 4000,
+	})
+	if !strings.Contains(text, "## 上次压缩摘要") {
+		t.Fatalf("summary section is missing:\n%s", text)
+	}
+	if !strings.Contains(text, "（这个会话没有压缩过，下面的对话就是全部记录。）") {
+		t.Fatalf("empty summary needs an explanation:\n%s", text)
+	}
+	// 取消勾选时当然不该写。
+	text, _, _ = BuildHandoff(sampleSession(), plain, HandoffOptions{
+		Summary: false, Messages: true, Todos: false, Limit: 4000,
+	})
+	if strings.Contains(text, "## 上次压缩摘要") {
+		t.Fatalf("unchecked summary was written:\n%s", text)
+	}
+}
+
 func TestWriteTurnsKeepsNewest(t *testing.T) {
 	turns := []Turn{
 		{Role: "用户", Text: "第一句"},

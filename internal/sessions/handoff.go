@@ -79,13 +79,17 @@ func BuildHandoff(session Session, data transcript, options HandoffOptions) (str
 	builder.WriteString(header(session, data, reason, options))
 
 	if options.Summary {
+		// 「上次压缩摘要」也是固定结构的一段：没有压缩记录的会话要写明
+		// 「没有压缩过」，否则接手方无法判断后面的对话是不是全部历史。
+		builder.WriteString("## 上次压缩摘要\n\n")
 		if summary := strings.TrimSpace(data.Summary); summary != "" {
-			builder.WriteString("## 上次压缩摘要\n\n")
 			// 摘要自己带 `#`/`##` 标题。原样写进来会和交接文本的段落同级，
-			// 让人分不清哪里是摘要、哪里是交接结构，所以整体降两级。
+			// 让人分不清哪里是摘要、哪里是交接结构，所以整体降一级。
 			builder.WriteString(demoteHeadings(summary, 1))
-			builder.WriteString("\n\n")
+		} else {
+			builder.WriteString("（这个会话没有压缩过，下面的对话就是全部记录。）")
 		}
+		builder.WriteString("\n\n")
 	}
 
 	messages := data.Messages

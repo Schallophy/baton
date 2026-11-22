@@ -195,12 +195,10 @@ async function select(agent, id) {
     // 每换一个会话就把勾选重置成该会话的实际内容：没有摘要就不勾摘要，
     // 待办和对话即使是空的也保留——「没有待办」本身就是要交接的信息，
     // 漏掉这一段，接手方分不清是没有待办还是被丢弃了。
-    const usable = new Set(
-      (detail.sections ?? []).filter((section) => section.chars > 0).map((section) => section.key),
-    );
     choice.reason = "";
     choice.note = "";
-    choice.summary = usable.has("summary");
+    // 三段全勾：交接结构固定，空的那段会自带一句说明。
+    choice.summary = true;
     choice.messages = true;
     choice.todos = true;
 
@@ -331,17 +329,14 @@ function partHtml(section) {
     (section.key === "summary" && choice.summary) ||
     (section.key === "messages" && choice.messages) ||
     (section.key === "todos" && choice.todos);
-  // 只有摘要为空时无从勾选；对话和待办为空也会写一句说明，仍然可选。
-  const blocked = section.key === "summary" && section.chars === 0;
+  // 三段都能勾：空的段落会在交接文本里写明「没有」，这本身就是信息。
   const size = section.chars ? `${fmtInt(section.chars)} 字` : "空";
   const count = section.count ? `<span class="part-note">${fmtInt(section.count)} 条</span>` : "";
   const note = section.note ? `<span class="part-note">${esc(section.note)}</span>` : "";
 
   return `
     <label class="part" data-on="${on ? "true" : "false"}">
-      <input type="checkbox" data-part="${esc(section.key)}" ${
-        on && !blocked ? "checked" : ""
-      } ${blocked ? "disabled" : ""} />
+      <input type="checkbox" data-part="${esc(section.key)}" ${on ? "checked" : ""} />
       <span class="part-label">${esc(section.label)}</span>
       ${count}
       ${note}
