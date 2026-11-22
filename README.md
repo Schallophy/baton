@@ -63,11 +63,13 @@ GOPROXY=https://goproxy.cn,direct go install .
 只记两条：
 
 ```bash
-baton up      # 后台起服务 + 开浏览器，回车就回到提示符
+baton         # 后台起服务，打印地址，回车就回到提示符
 baton stop    # 收工，关掉后台服务
 ```
 
-`baton up` 是把进程挂到后台，所以关掉终端窗口它还在跑；下次再敲 `baton`（不带子命令）会发现它已经在跑，直接把浏览器打开，不会再起第二个服务、第二个端口。
+它**不会**给你弹浏览器标签页——那样每敲一次就多一个页签。地址会打印出来，想看图点一下那个链接（或者 `baton up --open` 让它顺手打开）。
+
+`baton` 是把进程挂到后台，所以关掉终端窗口它还在跑；再敲一次会发现它已经在跑，只报地址，不会再起第二个服务、第二个端口。
 
 状态都记在 `~/.baton/server.json`（地址、进程号、退出令牌）。进程被杀掉后这个文件会失效，下次 `baton` 会自己识别出来并重新启动。
 
@@ -75,18 +77,20 @@ baton stop    # 收工，关掉后台服务
 
 ```bash
 baton serve              # 前台，默认端口从 7841 起，被占用就顺延
+baton serve --open       # 前台并打开浏览器
 baton serve --restart    # 换新版本后重启
 ```
 
 ## 用法
 
 ```bash
-baton                      # 打开界面；已在后台运行则只开浏览器
-baton up                   # 后台启动（Ctrl+C 不影响）
+baton                      # 后台启动；已经在跑就只报地址
+baton up                   # 同上（显式写法）
+baton up --open            # 后台启动并打开浏览器
 baton status               # 看现在跑在哪个地址、哪个进程
 baton stop                 # 停掉后台实例
 baton serve --port 7841    # 前台启动，指定端口；被占用时自动换一个
-baton serve --no-open      # 不自动开浏览器
+baton serve --open         # 前台启动并打开浏览器
 
 baton list                 # 终端列表，卡住的带 !
 baton list --stuck         # 只看卡住的
@@ -158,7 +162,7 @@ web/                       index.html、styles/、js/、fonts/、favicon
 ## 边界
 
 - 只监听 `127.0.0.1` / `::1` / `localhost`；传 `--host 0.0.0.0` 会被直接拒绝——baton 没有认证层，不该暴露到网络。
-- 不注册开机自启、不改环境变量、不装服务：要用时 `baton up`，不用时 `baton stop`。状态只有一个 JSON 文件，删掉它等于重置。
+- 不注册开机自启、不改环境变量、不装服务、不主动弹浏览器标签页：要用时 `baton`，不用时 `baton stop`。状态只有一个 JSON 文件，删掉它等于重置。
 - 只做只读读取，不替你发消息、不替你决定换谁。
 - 不做自动轮询报警：你打开它的时候它扫一次，之后你点「重新扫描」。
 - 摘要和对话正文里的 Markdown 标题会自动降级（代码块除外），避免和交接文本的段落抢层级。

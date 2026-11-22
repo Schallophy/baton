@@ -59,16 +59,19 @@ func Run() int {
 			}
 		}
 	}
-	return serve(nil)
+	// 不带子命令时同样后台启动，不弹浏览器：日常用 `baton` 就够了。
+	// 命令行开关（--port / --open）也转发过去，`baton --open` 才有意义。
+	return upCmd(os.Args[1:])
 }
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `baton %s — 把卡住的编码代理会话交接给下一个
 
 用法：
-  baton up                       后台启动界面并打开浏览器（推荐日常用）
-  baton                          打开界面；已在后台运行就直接打开浏览器
-  baton serve [--port N] [--no-open] [--restart]
+  baton up                       后台启动（推荐日常用，不会弹浏览器）
+  baton up --open                后台启动并打开浏览器
+  baton                          打印界面地址；没在运行就先后台启动
+  baton serve [--port N] [--open] [--restart]
                                  前台启动（Ctrl+C 退出）
   baton list [--json]            列出会话；卡住的排最前
   baton handoff --agent --id     直接打印交接文本
@@ -93,7 +96,7 @@ func serve(args []string) int {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	port := flags.Int("port", 0, "监听端口（0 = 自动挑选）")
 	host := flags.String("host", "127.0.0.1", "监听地址")
-	noOpen := flags.Bool("no-open", false, "不自动打开浏览器")
+	open := flags.Bool("open", false, "启动后打开浏览器")
 	restart := flags.Bool("restart", false, "重启后台实例")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -109,7 +112,7 @@ func serve(args []string) int {
 	if !*restart {
 		if running, ok := liveInstance(); ok {
 			fmt.Printf("baton %s 已经在运行\n  界面  %s\n", running.Version, running.Address)
-			if !*noOpen {
+			if *open {
 				openBrowser(running.Address)
 			}
 			return 0
@@ -164,7 +167,7 @@ func serve(args []string) int {
 	}()
 
 	fmt.Printf("baton %s\n  界面  %s\n  按 Ctrl+C 退出\n", version, address)
-	if !*noOpen {
+	if *open {
 		openBrowser(address)
 	}
 
@@ -215,8 +218,9 @@ func stopCmd() int {
 
 // ---- up ----------------------------------------------------------------
 
-// upCmd starts (or reuses) a background instance and opens the browser, then
-// returns to the prompt immediately.
+// upCmd starts (or reuses) a background instance and returns to the prompt. It
+// deliberately does not open a browser tab: opening one on every `baton` would
+// pile up tabs, and the address is printed anyway.
 //
 // This is the everyday form: `baton up` once, and from then on plain `baton`
 // finds the running server instead of starting a second one. The child is
@@ -225,13 +229,16 @@ func upCmd(args []string) int {
 	flags := flag.NewFlagSet("up", flag.ContinueOnError)
 	port := flags.Int("port", 7841, "监听端口（0 = 自动挑选）")
 	restart := flags.Bool("restart", false, "重启已运行的实例")
+	open := flags.Bool("open", false, "顺带打开浏览器")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
 
 	if running, ok := liveInstance(); ok && !*restart {
 		fmt.Printf("baton %s 已经在运行\n  界面  %s\n", running.Version, running.Address)
-		openBrowser(running.Address)
+		if *open {
+			openBrowser(running.Address)
+		}
 		return 0
 	}
 	if *restart {
@@ -245,12 +252,14 @@ func upCmd(args []string) int {
 		return 1
 	}
 
-	// 等子进程真的开始服务，再打开浏览器；否则会看到一个连不上的页面。
+	// 等子进程真的开始服务再报地址；否则给的链接会连不上。
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if running, ok := liveInstance(); ok {
 			fmt.Printf("baton %s 已在后台运行\n  界面  %s\n  停止  baton stop\n", running.Version, running.Address)
-			openBrowser(running.Address)
+			if *open {
+				openBrowser(running.Address)
+			}
 			return 0
 		}
 		time.Sleep(150 * time.Millisecond)
@@ -266,7 +275,7 @@ func startBackground(port int) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"serve", "--no-open"}
+	args := []string{"serve"}
 	if port > 0 {
 		args = append(args, "--port", strconv.Itoa(port))
 	}
