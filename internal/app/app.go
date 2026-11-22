@@ -161,7 +161,8 @@ func isPortBusy(err error) bool {
 // machine. Empty means "all interfaces" to net.Listen, which is not acceptable.
 func isLoopbackHost(host string) bool {
 	host = strings.TrimSpace(host)
-	if host == "localhost" {
+	// DNS host names are case-insensitive, and "LOCALHOST" still binds the loopback.
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
 	if parsed := net.ParseIP(host); parsed != nil {
