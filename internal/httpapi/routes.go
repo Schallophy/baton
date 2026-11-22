@@ -77,6 +77,25 @@ func (s *Server) handleHandoff(ctx *Ctx) error {
 	return nil
 }
 
+// handleShutdown lets `baton stop` end the background instance. The token comes
+// from the state file, so only a local process that could read it can call this;
+// a page in a browser cannot set the header cross-origin. The reply is sent
+// before the server stops, otherwise the CLI would read a connection reset.
+func (s *Server) handleShutdown(ctx *Ctx) error {
+	if s.Token == "" || s.Stop == nil {
+		return &HttpError{Status: 404, Message: "该实例不支持远程退出"}
+	}
+	if !strings.EqualFold(ctx.R.Header.Get("x-baton-token"), s.Token) {
+		return &HttpError{Status: 403, Message: "令牌不匹配"}
+	}
+	ctx.send(200, map[string]any{"stopping": true})
+	if s.Stop != nil {
+		// 让响应先写完，再真正停下。
+		go s.Stop()
+	}
+	return nil
+}
+
 func sessionError(err error) error {
 	if errors.Is(err, os.ErrNotExist) {
 		return &HttpError{Status: 404, Message: "会话不存在或已被删除"}

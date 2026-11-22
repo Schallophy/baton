@@ -45,6 +45,12 @@ type Server struct {
 	Detector *sessions.Detector
 	routes   map[string]handler
 	version  string
+
+	// Token guards POST /api/shutdown. Empty means the endpoint is not offered:
+	// a server started without one should not accept anonymous exit requests.
+	Token string
+	// Stop is called when a valid shutdown request arrives.
+	Stop func()
 }
 
 type handler func(*Ctx) error
@@ -58,6 +64,7 @@ func NewServer(detector *sessions.Detector, version string) *Server {
 	server.add("GET", "/api/sessions", server.handleSessions)
 	server.add("GET", "/api/session", server.handleSession)
 	server.add("POST", "/api/handoff", server.handleHandoff)
+	server.add("POST", "/api/shutdown", server.handleShutdown)
 	return server
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Schallophy/baton/internal/sessions"
 )
@@ -16,19 +17,24 @@ import (
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	detector := &sessions.Detector{}
-	return NewServer(detector, "test")
+	server := NewServer(detector, "test")
+	server.Token = "test-token"
+	server.Stop = func() {}
+	return server
 }
 
 func TestRouterMatchesExactPaths(t *testing.T) {
 	server := newTestServer(t)
 	cases := map[string]bool{
-		"GET /api/meta":     true,
-		"GET /api/sessions": true,
-		"GET /api/session":  true,
-		"POST /api/handoff": true,
-		"GET /api/handoff":  false, // method matters, not just the path
-		"GET /api/nope":     false,
-		"GET /api":          false,
+		"GET /api/meta":      true,
+		"GET /api/sessions":  true,
+		"GET /api/session":   true,
+		"POST /api/handoff":  true,
+		"POST /api/shutdown": true,
+		"GET /api/handoff":   false, // method matters, not just the path
+		"GET /api/shutdown":  false,
+		"GET /api/nope":      false,
+		"GET /api":           false,
 	}
 	for key, want := range cases {
 		method, path, _ := strings.Cut(key, " ")
@@ -181,5 +187,54 @@ func TestHTTPErrorsAreJSON(t *testing.T) {
 	}
 	if recorder.Header().Get("content-type") != "application/json; charset=utf-8" {
 		t.Fatalf("content-type = %q", recorder.Header().Get("content-type"))
+	}
+}
+
+func TestShutdownRequiresToken(t *testing.T) {
+	server := newTestServer(t)
+	var called bool
+	server.Stop = func() { called = true }
+
+	for _, token := range []string{"", "wrong"} {
+		request := httptest.NewRequest("POST", "/api/shutdown", strings.NewReader("{}"))
+		request.RemoteAddr = "127.0.0.1:1"
+		request.Header.Set("x-baton-token", token)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, request)
+		if recorder.Code != 403 {
+			t.Fatalf("token %q: status = %d, want 403", token, recorder.Code)
+		}
+	}
+	if called {
+		t.Fatalf("shutdown ran without a valid token")
+	}
+
+	request := httptest.NewRequest("POST", "/api/shutdown", strings.NewReader("{}"))
+	request.RemoteAddr = "127.0.0.1:1"
+	request.Header.Set("x-baton-token", "test-token")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+	if recorder.Code != 200 {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	// Stop 是在 goroutine 里调的，给调度一点时间。
+	for i := 0; i < 20 && !called; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !called {
+		t.Fatalf("valid shutdown did not reach the stop hook")
+	}
+}
+
+func TestShutdownIsAbsentWithoutToken(t *testing.T) {
+	// 没配令牌的实例（比如测试或嵌入式用法）不该提供退出入口。
+	server := NewServer(&sessions.Detector{}, "test")
+	request := httptest.NewRequest("POST", "/api/shutdown", strings.NewReader("{}"))
+	request.RemoteAddr = "127.0.0.1:1"
+	request.Header.Set("x-baton-token", "")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+	if recorder.Code != 404 {
+		t.Fatalf("status = %d, want 404", recorder.Code)
 	}
 }

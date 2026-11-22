@@ -35,6 +35,14 @@
 ```bash
 git clone https://github.com/Schallophy/baton
 cd baton
+go install .
+```
+
+`go install` 会把 `baton.exe` 放进 `$(go env GOPATH)\bin`（当前是 `C:\Users\Schallophy\go\bin`），这个目录已在你的 PATH 里，所以装完直接敲 `baton` 就能用，不用再 `go run .`。装完之后当前目录随便在哪都行。
+
+只想编译不安装：
+
+```bash
 go build -o baton.exe .
 ```
 
@@ -45,16 +53,39 @@ go build -o baton.exe .
 $env:GOPROXY = "https://goproxy.cn,direct"
 
 # bash
-GOPROXY=https://goproxy.cn,direct go build -o baton .
+GOPROXY=https://goproxy.cn,direct go install .
 ```
 
-界面用 `go:embed` 打进二进制，**没有 Node 构建步骤**，改完 Go 代码直接重编即可。
+界面用 `go:embed` 打进二进制，**没有 Node 构建步骤**，改完 Go 代码重新 `go install .` 即可。
+
+## 日常怎么用
+
+只记两条：
+
+```bash
+baton up      # 后台起服务 + 开浏览器，回车就回到提示符
+baton stop    # 收工，关掉后台服务
+```
+
+`baton up` 是把进程挂到后台，所以关掉终端窗口它还在跑；下次再敲 `baton`（不带子命令）会发现它已经在跑，直接把浏览器打开，不会再起第二个服务、第二个端口。
+
+状态都记在 `~/.baton/server.json`（地址、进程号、退出令牌）。进程被杀掉后这个文件会失效，下次 `baton` 会自己识别出来并重新启动。
+
+如果你更喜欢前台跑、看日志、Ctrl+C 结束：
+
+```bash
+baton serve              # 前台，默认端口从 7841 起，被占用就顺延
+baton serve --restart    # 换新版本后重启
+```
 
 ## 用法
 
 ```bash
-baton                      # 打开界面（默认动作）
-baton serve --port 7841    # 指定端口；被占用时自动换一个
+baton                      # 打开界面；已在后台运行则只开浏览器
+baton up                   # 后台启动（Ctrl+C 不影响）
+baton status               # 看现在跑在哪个地址、哪个进程
+baton stop                 # 停掉后台实例
+baton serve --port 7841    # 前台启动，指定端口；被占用时自动换一个
 baton serve --no-open      # 不自动开浏览器
 
 baton list                 # 终端列表，卡住的带 !
@@ -114,17 +145,20 @@ gofmt -l .
 
 ```
 main.go                    进程入口，只调 app.Run
-internal/app/              CLI 子命令、端口顺延、开浏览器
-internal/httpapi/          四个 API + 静态资源 + loopback 限制 + CSP
+internal/app/              CLI 子命令、后台实例（state.go）、端口顺延、开浏览器
+internal/httpapi/          四个 API + `/api/shutdown` + 静态资源 + loopback + CSP
 internal/sessions/         各 agent 的探测器与交接文本生成
 web/                       index.html、styles/、js/、fonts/、favicon
 ```
 
 界面复用 literouter 的 `tokens.css` / `base.css` / `components.css` / `markdown.js` / `format.js` / `ui.js`；`app.css` 只负责交接台布局。
 
+后台实例只靠 `~/.baton/server.json` 协调：下一个 `baton` 先拿这份记录去问 `/api/meta`，版本对得上才复用，否则当过期记录清掉。`baton stop` 走 `/api/shutdown`，带一个只存在该文件里的令牌；网页跨站请求设不了这个头，所以页面无法把自己所在的服务器关掉。
+
 ## 边界
 
 - 只监听 `127.0.0.1` / `::1` / `localhost`；传 `--host 0.0.0.0` 会被直接拒绝——baton 没有认证层，不该暴露到网络。
+- 不注册开机自启、不改环境变量、不装服务：要用时 `baton up`，不用时 `baton stop`。状态只有一个 JSON 文件，删掉它等于重置。
 - 只做只读读取，不替你发消息、不替你决定换谁。
 - 不做自动轮询报警：你打开它的时候它扫一次，之后你点「重新扫描」。
 - 摘要和对话正文里的 Markdown 标题会自动降级（代码块除外），避免和交接文本的段落抢层级。

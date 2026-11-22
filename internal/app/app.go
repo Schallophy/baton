@@ -39,6 +39,12 @@ func Run() int {
 			return listCmd(os.Args[2:])
 		case "handoff", "copy":
 			return handoffCmd(os.Args[2:])
+		case "status":
+			return statusCmd()
+		case "stop", "quit":
+			return stopCmd()
+		case "up", "start":
+			return upCmd(os.Args[2:])
 		case "version", "--version", "-v":
 			fmt.Println("baton", version)
 			return 0
@@ -60,12 +66,15 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `baton %s — 把卡住的编码代理会话交接给下一个
 
 用法：
-  baton                          打开界面（默认）
-  baton serve [--port N] [--no-open]
-                                 启动本地界面
+  baton up                       后台启动界面并打开浏览器（推荐日常用）
+  baton                          打开界面；已在后台运行就直接打开浏览器
+  baton serve [--port N] [--no-open] [--restart]
+                                 前台启动（Ctrl+C 退出）
   baton list [--json]            列出会话；卡住的排最前
   baton handoff --agent --id     直接打印交接文本
   baton handoff --latest         接住最近一个卡住的会话
+  baton status                   显示正在运行的实例地址
+  baton stop                     停掉后台运行的实例
   baton version
 
 交接选项：
@@ -85,6 +94,7 @@ func serve(args []string) int {
 	port := flags.Int("port", 0, "监听端口（0 = 自动挑选）")
 	host := flags.String("host", "127.0.0.1", "监听地址")
 	noOpen := flags.Bool("no-open", false, "不自动打开浏览器")
+	restart := flags.Bool("restart", false, "重启后台实例")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -95,8 +105,30 @@ func serve(args []string) int {
 		return 2
 	}
 
+	// 已经在跑就直接复用：重复敲 baton 不该堆出第二个服务、第二个端口。
+	if !*restart {
+		if running, ok := liveInstance(); ok {
+			fmt.Printf("baton %s 已经在运行\n  界面  %s\n", running.Version, running.Address)
+			if !*noOpen {
+				openBrowser(running.Address)
+			}
+			return 0
+		}
+	} else if running, ok := liveInstance(); ok {
+		// 换新版本时用 --restart：先停旧进程，旧进程会自己清掉状态文件。
+		stopInstance(running, 3*time.Second)
+	}
+
 	detector := sessions.NewDetector()
 	server := httpapi.NewServer(detector, version)
+	token := newToken()
+	server.Token = token
+	server.Stop = func() {
+		select {
+		case shutdownRequests <- struct{}{}:
+		default:
+		}
+	}
 
 	listener, actual, err := listen(*host, *port)
 	if err != nil {
@@ -118,6 +150,19 @@ func serve(args []string) int {
 		}
 	}()
 
+	if err := writeState(serverState{
+		Address: address, Port: portOf(actual), PID: os.Getpid(), Version: version, Token: token,
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "baton: 无法记录运行地址："+err.Error())
+	}
+	// 退出时清掉自己的状态文件；只在地址还指向自己时才删，避免误删
+	// 已被另一个实例覆盖的记录。
+	defer func() {
+		if current, ok := readState(); ok && current.Address == address {
+			clearState()
+		}
+	}()
+
 	fmt.Printf("baton %s\n  界面  %s\n  按 Ctrl+C 退出\n", version, address)
 	if !*noOpen {
 		openBrowser(address)
@@ -125,6 +170,13 @@ func serve(args []string) int {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)
+
+	// 让 `baton stop` 也能结束进程，而不只有 Ctrl+C。
+	go func() {
+		<-shutdownRequests
+		stop <- os.Interrupt
+	}()
+
 	<-stop
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -132,6 +184,103 @@ func serve(args []string) int {
 	_ = httpServer.Shutdown(ctx)
 	<-done
 	return 0
+}
+
+// ---- status / stop -------------------------------------------------------
+
+func statusCmd() int {
+	running, ok := liveInstance()
+	if !ok {
+		fmt.Println("baton 没有在运行。")
+		return 1
+	}
+	fmt.Printf("baton %s\n  界面  %s\n  进程  %d\n", running.Version, running.Address, running.PID)
+	return 0
+}
+
+func stopCmd() int {
+	running, ok := liveInstance()
+	if !ok {
+		fmt.Println("baton 没有在运行。")
+		return 0
+	}
+	if err := stopInstance(running, 5*time.Second); err != nil {
+		fmt.Fprintln(os.Stderr, "baton: "+err.Error())
+		return 1
+	}
+	clearState()
+	fmt.Printf("已停止 %s（进程 %d）\n", running.Address, running.PID)
+	return 0
+}
+
+// ---- up ----------------------------------------------------------------
+
+// upCmd starts (or reuses) a background instance and opens the browser, then
+// returns to the prompt immediately.
+//
+// This is the everyday form: `baton up` once, and from then on plain `baton`
+// finds the running server instead of starting a second one. The child is
+// detached so closing the terminal does not end it; `baton stop` closes it.
+func upCmd(args []string) int {
+	flags := flag.NewFlagSet("up", flag.ContinueOnError)
+	port := flags.Int("port", 7841, "监听端口（0 = 自动挑选）")
+	restart := flags.Bool("restart", false, "重启已运行的实例")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+
+	if running, ok := liveInstance(); ok && !*restart {
+		fmt.Printf("baton %s 已经在运行\n  界面  %s\n", running.Version, running.Address)
+		openBrowser(running.Address)
+		return 0
+	}
+	if *restart {
+		if running, ok := liveInstance(); ok {
+			stopInstance(running, 3*time.Second)
+		}
+	}
+
+	if err := startBackground(*port); err != nil {
+		fmt.Fprintln(os.Stderr, "baton: "+err.Error())
+		return 1
+	}
+
+	// 等子进程真的开始服务，再打开浏览器；否则会看到一个连不上的页面。
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if running, ok := liveInstance(); ok {
+			fmt.Printf("baton %s 已在后台运行\n  界面  %s\n  停止  baton stop\n", running.Version, running.Address)
+			openBrowser(running.Address)
+			return 0
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	fmt.Fprintln(os.Stderr, "baton: 后台实例没有按时启动，试试 baton serve 看报错")
+	return 1
+}
+
+// startBackground re-executes this binary with `serve --no-open`. The state file
+// makes this a one-way handoff: the parent does not need the child's PID.
+func startBackground(port int) error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	args := []string{"serve", "--no-open"}
+	if port > 0 {
+		args = append(args, "--port", strconv.Itoa(port))
+	}
+	command := exec.Command(self, args...)
+	command.SysProcAttr = detachAttr()
+	// 子进程不继承这个终端：关掉窗口也还在跑，输出只留在日志里。
+	command.Stdin = nil
+	command.Stdout = nil
+	command.Stderr = nil
+	if err := command.Start(); err != nil {
+		return err
+	}
+	// 不 Wait：父进程立即返回，子是独立进程。
+	return nil
 }
 
 // listen binds the requested port, or asks the OS for a free one. A port that is
@@ -156,6 +305,24 @@ func isPortBusy(err error) bool {
 	return strings.Contains(err.Error(), "already in use") ||
 		strings.Contains(err.Error(), "Only one usage")
 }
+
+// portOf extracts the numeric port from a listener address.
+func portOf(address string) int {
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return 0
+	}
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+// shutdownRequests carries a graceful exit asked for by `baton stop`. It is a
+// channel rather than a signal so stopping works on Windows, where a second
+// process cannot raise Ctrl+C in another one.
+var shutdownRequests = make(chan struct{}, 1)
 
 // isLoopbackHost reports whether a listen address keeps the server on this
 // machine. Empty means "all interfaces" to net.Listen, which is not acceptable.
