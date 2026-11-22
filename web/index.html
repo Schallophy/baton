@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>baton · 会话交接</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/fonts.css" />
+    <link rel="stylesheet" href="/styles/tokens.css" />
+    <link rel="stylesheet" href="/styles/base.css" />
+    <link rel="stylesheet" href="/styles/components.css" />
+    <link rel="stylesheet" href="/styles/app.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#rail">跳到会话列表</a>
+
+    <header class="bar">
+      <a class="brand" href="/" aria-label="baton 首页">
+        <svg viewBox="0 0 28 28" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+          <rect x="2.5" y="11.5" width="12" height="5" rx="2.5" />
+          <path d="M14.5 14h6" />
+          <path d="M18 10.5 21.5 14 18 17.5" />
+          <circle cx="6.5" cy="6.5" r="1.5" />
+          <circle cx="11" cy="21.5" r="1.5" />
+        </svg>
+        <span>baton</span>
+      </a>
+      <span class="bar-sub">会话交接</span>
+
+      <div class="bar-state">
+        <span class="agents" id="agents"></span>
+        <span class="state-dot" id="scan-dot"></span>
+        <span id="scan-state">扫描中</span>
+        <button class="btn sm" type="button" data-action="refresh">重新扫描</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="rail" id="rail">
+        <div class="rail-head">
+          <input
+            class="input rail-search"
+            type="search"
+            id="filter"
+            placeholder="筛选标题、目录或 ID"
+            aria-label="筛选会话"
+            autocomplete="off"
+          />
+          <div class="rail-tools">
+            <button class="chip" type="button" data-action="stuck-only" aria-pressed="false">
+              只看卡住的
+            </button>
+            <span class="rail-count" id="rail-count"></span>
+          </div>
+        </div>
+        <ul class="rail-list" id="rail-list"></ul>
+        <div class="rail-note" id="rail-note" hidden></div>
+      </aside>
+
+      <section class="handoff" id="handoff" aria-live="polite">
+        <div class="empty" id="handoff-empty">
+          <p class="empty-title">选一个会话</p>
+          <p>左边列出本机编码代理留下的会话。卡住的排在最前，选中后右边就是可以直接粘贴的交接文本。</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+# 仓库统一 LF：Go 与前端源码在两种平台都能直接用，避免无意义的换行改动。
+* text=auto eol=lf
+
+*.woff2 binary
+*.png binary
+*.ico binary

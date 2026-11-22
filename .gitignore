@@ -1,0 +1,10 @@
+# 构建产物
+baton
+baton.exe
+baton.exe~
+*.exe
+*.test
+
+# 本地临时文件
+*.md.out
+tmp/
