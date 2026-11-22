@@ -98,7 +98,7 @@ OpenCode 走直读而不是 `opencode session export`，因为**报错的那一�
 - assistant 的 `finish="error"` 或 `error.type` 是真失败（`provider.free-limit`、`provider.upstream`、`provider.transport` 等），即使崩溃时没写 `idle` 行也算；
 - 没有 `finish` 且安静超过 8 分钟 → 被中断；`tool-calls` 静默超过 30 分钟 → 被中断；否则是「进行中」。
 
-压缩摘要取最后一次 `compaction` 的 `summary`，对话从它的 `seq` 之后开始；`keepID` 之前的消息已由摘要覆盖，列表和交接文本都会写明覆盖了多少条。
+压缩摘要取最后一次 `compaction` 的 `summary`，对话从它的 `seq` 之后开始；更早的消息已由摘要覆盖，界面和交接文本都会写明覆盖了多少条。
 
 ## 开发
 
@@ -125,3 +125,4 @@ web/                       index.html、styles/、js/、fonts/、favicon
 - 只监听 `127.0.0.1` / `::1` / `localhost`；传 `--host 0.0.0.0` 会被直接拒绝——baton 没有认证层，不该暴露到网络。
 - 只做只读读取，不替你发消息、不替你决定换谁。
 - 不做自动轮询报警：你打开它的时候它扫一次，之后你点「重新扫描」。
+- 摘要和对话正文里的 Markdown 标题会自动降级（代码块除外），避免和交接文本的段落抢层级。
