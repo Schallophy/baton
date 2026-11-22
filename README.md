@@ -1,5 +1,7 @@
 # baton
 
+名字取自接力赛的接力棒：会话跑不下去了，得有人把棒接住继续跑（`pass the baton` 也就是「交接」）。
+
 把本机编码代理（OpenCode / Qoder / Qoder CN / WorkBuddy / ZCode）留下的会话，变成一份**可以直接粘贴给下一个 agent** 的交接文本。
 
 它解决的不是「归档」，而是**逃生**：额度用完、上游报错、会话被中断，或者你只是想换个 agent——那一刻你没心情翻列表，只想一眼看出「谁卡了」，勾选要带走的东西，复制，继续干活。
@@ -38,7 +40,7 @@ cd baton
 go install .
 ```
 
-`go install` 会把 `baton.exe` 放进 `$(go env GOPATH)\bin`（当前是 `C:\Users\Schallophy\go\bin`），这个目录已在你的 PATH 里，所以装完直接敲 `baton` 就能用，不用再 `go run .`。装完之后当前目录随便在哪都行。
+`go install` 会把 `baton.exe` 放进 `$(go env GOPATH)\bin`（通常已经在 PATH 里），所以装完直接敲 `baton` 就能用，不用再 `go run .`。装完之后当前目录随便在哪都行。
 
 只想编译不安装：
 
